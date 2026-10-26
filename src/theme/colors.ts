@@ -1,0 +1,18 @@
+export const colors = {
+  primary: '#0F766E',
+  primaryDark: '#0D9488',
+  primarySoft: '#CCFBF1',
+  accent: '#F59E0B',
+  bg: '#F0FDFA',
+  card: '#FFFFFF',
+  text: '#134E4A',
+  textMuted: '#5EEAD4',
+  textDark: '#115E59',
+  danger: '#EF4444',
+  success: '#10B981',
+  border: '#99F6E4',
+  white: '#FFFFFF',
+  black: '#042F2E',
+  gradientStart: '#0F766E',
+  gradientEnd: '#14B8A6',
+};
