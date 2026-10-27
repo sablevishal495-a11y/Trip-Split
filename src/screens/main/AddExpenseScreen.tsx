@@ -26,28 +26,56 @@ export function AddExpenseScreen({ route, navigation }: any) {
   const [source, setSource] = useState<'shared_fund' | 'personal'>('shared_fund');
 
   const onSubmit = async () => {
-    const amountPaise = inrToPaise(parseFloat(amount) || 0);
-    if (!title.trim() || amountPaise <= 0) return alert('Enter title and amount');
-    const participantIds = members.map((m: any) => m.user_id);
-    if (!participantIds.length) return alert('No members to split with');
-    const split = calculateSplit({ participantIds, totalAmountPaise: amountPaise, method: 'equal' });
-    const splitAmounts = participantIds.map((id) => split.allocations[id] || 0);
+       const cleanTitle = title.trim();
+       const numericAmount = Number(amount.replace(/,/g, ''));
 
-    try {
-      await recordExpense.mutateAsync({
-        tripId, title: title.trim(), amountPaise, category,
-        expenseDate: new Date().toISOString(),
-        paidBy: session?.user?.id,
-        paymentSource: source,
-        splitMethod: 'equal',
-        participants: participantIds,
-        splitAmounts,
-      });
-      navigation.goBack();
-    } catch (e: any) {
-      alert(e.message || 'Failed');
-    }
-  };
+       if (!cleanTitle) {
+         alert('Enter an expense title.');
+         return;
+       }
+       if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+         alert('Enter an amount greater than ₹0.');
+         return;
+       }
+       if (!session?.user?.id) {
+         alert('Your session has expired. Please sign in again.');
+         return;
+       }
+
+       const participantIds = members.map((member: any) => member.user_id);
+       if (!participantIds.length) {
+         alert('The trip has no active members yet.');
+         return;
+       }
+
+       const amountPaise = inrToPaise(numericAmount);
+       const split = calculateSplit({
+         participantIds,
+         totalAmountPaise: amountPaise,
+         method: 'equal',
+       });
+
+       try {
+         await recordExpense.mutateAsync({
+           tripId,
+           title: cleanTitle,
+           amountPaise,
+           category,
+           expenseDate: new Date().toISOString(),
+           paidBy: session.user.id,
+           paymentSource: 'shared_fund',
+           splitMethod: 'equal',
+           participants: participantIds,
+           splitAmounts: participantIds.map(
+             (id) => split.allocations[id] || 0,
+           ),
+         });
+         navigation.goBack();
+       } catch (e: any) {
+         alert(e.message || 'Failed to record expense');
+       }
+     };
+
 
   const preview = (() => {
     const a = inrToPaise(parseFloat(amount) || 0);

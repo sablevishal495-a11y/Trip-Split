@@ -41,9 +41,12 @@ export function useUpdateProfile() {
         .eq('id', userId);
       if (error) throw error;
     },
-    onSuccess: (_, { userId }) => {
-      queryClient.invalidateQueries({ queryKey: ['profile', userId] });
-    },
+    onSuccess: async (_, vars) => {
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: ['expenses', vars.tripId] }),
+            qc.invalidateQueries({ queryKey: ['fund_balance', vars.tripId] }),
+          ]);
+        },
   });
 }
 
@@ -212,6 +215,34 @@ export function useRecordExpense() {
     }
   });
 }
+
+export function useJoinTripByInviteCode() {
+      const qc = useQueryClient();
+
+      return useMutation({
+        mutationFn: async (rawCode: string) => {
+          const code = rawCode.trim().toUpperCase();
+          if (!code) throw new Error('Enter an invite code');
+
+          const { data, error } = await supabase.rpc(
+            'join_trip_by_invite_code',
+            { p_invite_code: code },
+          );
+          if (error) throw error;
+          if (!data) throw new Error('The trip could not be joined');
+
+          return data as string;
+        },
+        onSuccess: async (tripId) => {
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: ['trips'] }),
+            qc.invalidateQueries({ queryKey: ['trip', tripId] }),
+            qc.invalidateQueries({ queryKey: ['trip_members', tripId] }),
+          ]);
+        },
+      });
+    }
+
 
 // 7. Trip Management Hooks
 export function useCreateTrip() {

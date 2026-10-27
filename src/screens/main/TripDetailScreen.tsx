@@ -43,10 +43,18 @@ export function TripDetailScreen() {
   const [selectedMember, setSelectedMember] = useState<any>(null);
 
   const { data: trip, isLoading: tripLoading } = useTripDetails(tripId);
-  const { data: sharedFund, isLoading: fundLoading } = useSharedFundBalance(tripId);
-  const { data: netBalance, isLoading: balanceLoading } = useUserNetBalance(tripId, userId || '');
-  const { data: expenses, isLoading: expensesLoading } = useTripExpenses(tripId);
-  const { data: members, isLoading: membersLoading } = useTripMembers(tripId);
+ const { data: sharedFund, isLoading: fundLoading } = useSharedFundBalance(tripId);
+ const { data: netBalance, isLoading: balanceLoading } = useUserNetBalance(tripId, userId || '');
+ const { data: expenses = [], isLoading: expensesLoading } = useTripExpenses(tripId);
+ const { data: members, isLoading: membersLoading } = useTripMembers(tripId);
+     function formatINR(paise: number | null | undefined): string {
+       const inr = Math.abs(paise ?? 0) / 100;
+       return '₹' + inr.toLocaleString('en-IN', {
+         maximumFractionDigits: 2,
+         minimumFractionDigits: 2,
+       });
+     }
+
 
   const deleteTripMutation = useDeleteTrip();
 
@@ -191,7 +199,7 @@ const handleDeleteTrip = () => {
                     Paid via: {item.payment_source === 'shared_fund' ? 'Shared Fund' : 'Personal'}
                   </Text>
                 </View>
-                <Text style={styles.expenseAmount}>{formatINR(item.amount)}</Text>
+                <Text style={styles.expenseAmount}> {formatINR(item.amount_paise)}</Text>
               </Card.Content>
             </Card>
           ))
