@@ -100,20 +100,42 @@ export function useSharedFundBalance(tripId: string) {
 export function useUserNetBalance(tripId: string, userId: string) {
   return useQuery({
     queryKey: ['user-net', tripId, userId],
+    enabled: !!tripId && !!userId,
     queryFn: async () => {
-      const { data: contribs } = await supabase.from('contributions').select('amount_paise').eq('trip_id', tripId).eq('user_id', userId);
+      // 1. Pool Contributions
+      const { data: contribs } = await supabase
+        .from('contributions')
+        .select('amount_paise')
+        .eq('trip_id', tripId)
+        .eq('user_id', userId);
 
-      // Filter splits that belong to this trip
+      // 2. Personal Out-of-pocket Expenses Paid
+      const { data: personalExps } = await supabase
+        .from('expenses')
+        .select('amount_paise')
+        .eq('trip_id', tripId)
+        .eq('paid_by', userId)
+        .neq('payment_source', 'pool');
+
+      // 3. User's Expense Splits
       const { data: tripExps } = await supabase.from('expenses').select('id').eq('trip_id', tripId);
-      const tripExpIds = (tripExps || []).map(e => e.id);
+      const tripExpIds = (tripExps || []).map((e) => e.id);
 
-      const { data: allUserSplits } = await supabase.from('expense_splits').select('amount_paise, expense_id').eq('user_id', userId);
-      const relevantSplits = (allUserSplits || []).filter(s => tripExpIds.includes(s.expense_id));
+      let totalSpent = 0;
+      if (tripExpIds.length > 0) {
+        const { data: splits } = await supabase
+          .from('expense_splits')
+          .select('amount_paise')
+          .eq('user_id', userId)
+          .in('expense_id', tripExpIds);
 
-      const totalContributed = (contribs || []).reduce((sum, c) => sum + c.amount_paise, 0);
-      const totalSpent = relevantSplits.reduce((sum, s) => sum + s.amount_paise, 0);
+        totalSpent = (splits || []).reduce((sum, s) => sum + s.amount_paise, 0);
+      }
 
-      return (totalContributed - totalSpent) / 100;
+      const poolIn = (contribs || []).reduce((sum, c) => sum + c.amount_paise, 0);
+      const personalIn = (personalExps || []).reduce((sum, e) => sum + e.amount_paise, 0);
+
+      return (poolIn + personalIn - totalSpent) / 100;
     },
   });
 }
@@ -136,23 +158,64 @@ export function useTripMembers(tripId: string) {
 export function useMemberDetails(tripId: string, userId: string) {
   return useQuery({
     queryKey: ['member-details', tripId, userId],
+    enabled: !!tripId && !!userId,
     queryFn: async () => {
-      const { data: contribs } = await supabase.from('contributions').select('*').eq('trip_id', tripId).eq('user_id', userId);
-      const { data: tripExps } = await supabase.from('expenses').select('id, title, created_at').eq('trip_id', tripId);
-      const expIds = (tripExps || []).map(e => e.id);
-      const { data: splits } = await supabase.from('expense_splits').select('*, expenses(title)').eq('user_id', userId).in('expense_id', expIds);
+      // 1. Pool Contributions
+      const { data: contribs, error: cErr } = await supabase
+        .from('contributions')
+        .select('*')
+        .eq('trip_id', tripId)
+        .eq('user_id', userId);
 
-      const totalPaid = (contribs || []).reduce((sum, c) => sum + c.amount_paise, 0);
-      const totalShare = (splits || []).reduce((sum, s) => sum + s.amount_paise, 0);
+      if (cErr) throw cErr;
+
+      // 2. Personal Expenses Paid out of pocket
+      const { data: personalExps } = await supabase
+        .from('expenses')
+        .select('amount_paise')
+        .eq('trip_id', tripId)
+        .eq('paid_by', userId)
+        .neq('payment_source', 'pool');
+
+      // 3. Expense Splits
+      const { data: tripExps, error: eErr } = await supabase
+        .from('expenses')
+        .select('id, title, created_at')
+        .eq('trip_id', tripId);
+
+      if (eErr) throw eErr;
+
+      const expIds = (tripExps || []).map((e) => e.id);
+      let splits: any[] = [];
+
+      if (expIds.length > 0) {
+        const { data: splitsData, error: sErr } = await supabase
+          .from('expense_splits')
+          .select('*, expenses(title)')
+          .eq('user_id', userId)
+          .in('expense_id', expIds);
+
+        if (sErr) throw sErr;
+        splits = splitsData || [];
+      }
+
+      const poolContributed = (contribs || []).reduce((sum, c) => sum + c.amount_paise, 0);
+      const personalPaid = (personalExps || []).reduce((sum, e) => sum + e.amount_paise, 0);
+      const totalCredit = poolContributed + personalPaid;
+      const totalShare = splits.reduce((sum, s) => sum + s.amount_paise, 0);
 
       return {
-        totalPaid: totalPaid / 100,
-        totalShare: totalShare / 100,
-        netBalance: (totalPaid - totalShare) / 100,
-        contributions: (contribs || []).map(c => ({ ...c, amount: c.amount_paise / 100 })),
-        expenses: (splits || []).map(s => ({ ...s, amount: s.amount_paise / 100 }))
+        totalContributed: totalCredit / 100,
+        totalExpenseShare: totalShare / 100,
+        netBalance: (totalCredit - totalShare) / 100,
+        contributions: (contribs || []).map((c) => ({ ...c, amount: c.amount_paise / 100 })),
+        splits: splits.map((s) => ({
+          ...s,
+          amount: s.amount_paise / 100,
+          expense: s.expenses || s.expense,
+        })),
       };
-    }
+    },
   });
 }
 
@@ -251,14 +314,19 @@ export function useJoinTripByInviteCode() {
 export function useCreateTrip() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ name, description }: any) => {
+    mutationFn: async ({ name, destination, description }: any) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not auth');
 
+      // Combine destination and notes into description field
+      const tripDest = destination?.trim();
+      const tripNotes = description?.trim();
+      const combinedDescription = [tripDest, tripNotes].filter(Boolean).join(' • ');
+
       const code = Math.random().toString(36).substring(2, 10).toUpperCase();
       const { data: trip, error } = await supabase.from('trips').insert({
-        name,
-        description: description || '',
+        name: name.trim(),
+        description: combinedDescription || 'No destination specified',
         created_by: user.id,
         currency: 'INR'
       }).select().single();

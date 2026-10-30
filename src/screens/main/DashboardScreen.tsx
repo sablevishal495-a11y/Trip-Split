@@ -60,15 +60,19 @@ export function DashboardScreen({ navigation }: any) {
             >
               <View style={styles.cardTop}>
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{item.trip_members?.[0]?.role === 'organizer' ? '👑 Organizer' : '👤 Member'}</Text>
+                  <Text style={styles.badgeText}>
+                    {item.trip_members?.[0]?.role === 'organizer' ? '👑 Organizer' : '👤 Member'}
+                  </Text>
                 </View>
                 <Text style={styles.cardArrow}>→</Text>
               </View>
-              <Text style={styles.cardTitle}>{item.trips?.name || 'Trip'}</Text>
-              <Text style={styles.cardDest}>📍 {item.trips?.destination}</Text>
+              <Text style={styles.cardTitle}>{item.name || item.title || 'Trip'}</Text>
+              {!!(item.description || item.destination) && (
+                <Text style={styles.cardDest}>📍 {item.description || item.destination}</Text>
+              )}
               <View style={styles.cardFooter}>
                 <Text style={styles.cardDate}>
-                  {item.trips?.start_date || ''} → {item.trips?.end_date || ''}
+                  {item.start_date ? `${item.start_date} → ${item.end_date || ''}` : `Created: ${new Date(item.created_at).toLocaleDateString()}`}
                 </Text>
               </View>
             </Pressable>

@@ -222,7 +222,7 @@ const handleDeleteTrip = () => {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.expenseTitle}>{item.title}</Text>
                   <Text style={styles.expenseSub}>
-                    Paid via: {item.payment_source === 'shared_fund' ? 'Shared Fund' : 'Personal'}
+                    Paid via: {(item.payment_source === 'pool' || item.payment_source === 'shared_fund') ? 'Shared Fund' : 'Personal'}
                   </Text>
                 </View>
                 <Text style={styles.expenseAmount}> {formatINR(item.amount)}</Text>
