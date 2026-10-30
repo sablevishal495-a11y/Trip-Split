@@ -59,16 +59,10 @@ export function AddExpenseScreen({ route, navigation }: any) {
          await recordExpense.mutateAsync({
            tripId,
            title: cleanTitle,
-           amountPaise,
+           amount: numericAmount,
            category,
-           expenseDate: new Date().toISOString(),
            paidBy: session.user.id,
-           paymentSource: 'shared_fund',
-           splitMethod: 'equal',
-           participants: participantIds,
-           splitAmounts: participantIds.map(
-             (id) => split.allocations[id] || 0,
-           ),
+           paymentSource: source === 'shared_fund' ? 'pool' : 'personal',
          });
          navigation.goBack();
        } catch (e: any) {

@@ -37,7 +37,7 @@ export function DashboardScreen({ navigation }: any) {
       <View style={styles.sheet}>
         <FlatList
           data={trips || []}
-          keyExtractor={(item: any) => item.trip_id}
+          keyExtractor={(item: any) => item.id}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
           contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
           ListEmptyComponent={
@@ -56,11 +56,11 @@ export function DashboardScreen({ navigation }: any) {
           renderItem={({ item }: any) => (
             <Pressable
               style={({ pressed }) => [styles.card, pressed && { transform: [{ scale: 0.98 }], opacity: 0.95 }]}
-              onPress={() => navigation.navigate('TripDetail', { tripId: item.trip_id })}
+              onPress={() => navigation.navigate('TripDetail', { tripId: item.id })}
             >
               <View style={styles.cardTop}>
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{item.role === 'organizer' ? '👑 Organizer' : '👤 Member'}</Text>
+                  <Text style={styles.badgeText}>{item.trip_members?.[0]?.role === 'organizer' ? '👑 Organizer' : '👤 Member'}</Text>
                 </View>
                 <Text style={styles.cardArrow}>→</Text>
               </View>

@@ -19,7 +19,9 @@ import {
   useUserNetBalance,
   useTripExpenses,
   useTripMembers,
+  useTripInviteCode,
   useMemberDetails,
+  useLeaveTrip,
   useDeleteTrip,
 } from '../../lib/queries';
 import { MainStackParamList } from '../../navigation/types';
@@ -39,7 +41,7 @@ export function TripDetailScreen() {
 
   const { data: session } = useSession();
   const userId = session?.user?.id;
-
+   const leaveTripMutation = useLeaveTrip();
   const [selectedMember, setSelectedMember] = useState<any>(null);
 
   const { data: trip, isLoading: tripLoading } = useTripDetails(tripId);
@@ -47,18 +49,35 @@ export function TripDetailScreen() {
  const { data: netBalance, isLoading: balanceLoading } = useUserNetBalance(tripId, userId || '');
  const { data: expenses = [], isLoading: expensesLoading } = useTripExpenses(tripId);
  const { data: members, isLoading: membersLoading } = useTripMembers(tripId);
-     function formatINR(paise: number | null | undefined): string {
-       const inr = Math.abs(paise ?? 0) / 100;
-       return '₹' + inr.toLocaleString('en-IN', {
-         maximumFractionDigits: 2,
+     function formatINR(value: number | null | undefined): string {
+       return '₹' + Math.abs(value ?? 0).toLocaleString('en-IN', {
          minimumFractionDigits: 2,
+         maximumFractionDigits: 2,
        });
      }
 
-
+const { data: inviteCode } = useTripInviteCode(tripId);
   const deleteTripMutation = useDeleteTrip();
 
-  const isOrganizer = trip?.created_by === userId;
+const isOrganizer = !!userId && !!trip?.created_by && trip.created_by === userId;
+
+  const handleLeaveTrip = () => {
+    Alert.alert('Leave Trip', 'Are you sure you want to leave this trip?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave Trip',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await leaveTripMutation.mutateAsync(tripId);
+            navigation.popToTop();
+          } catch (e: any) {
+            Alert.alert('Could not leave trip', e.message || 'Please try again.');
+          }
+        },
+      },
+    ]);
+  };
 
 const handleDeleteTrip = () => {
   Alert.alert(
@@ -75,6 +94,8 @@ const handleDeleteTrip = () => {
             navigation.goBack();
           } catch (e: any) {
             Alert.alert('Could not delete trip', e.message || 'Please try again.');
+
+
           }
         },
       },
@@ -149,7 +170,12 @@ const handleDeleteTrip = () => {
 
           <TouchableOpacity
             style={[styles.actionCardBtn, styles.inviteBtn]}
-            onPress={() => Alert.alert('Invite Code', `Share code: ${trip?.invite_code}`)}
+            onPress={() =>
+              Alert.alert(
+                'Invite Code',
+                inviteCode ? `Share code: ${inviteCode}` : 'No invite code was found for this trip.',
+              )
+            }
           >
             <Text style={[styles.actionBtnText, { color: colors.primary }]}>Invite</Text>
           </TouchableOpacity>
@@ -199,7 +225,7 @@ const handleDeleteTrip = () => {
                     Paid via: {item.payment_source === 'shared_fund' ? 'Shared Fund' : 'Personal'}
                   </Text>
                 </View>
-                <Text style={styles.expenseAmount}> {formatINR(item.amount_paise)}</Text>
+                <Text style={styles.expenseAmount}> {formatINR(item.amount)}</Text>
               </Card.Content>
             </Card>
           ))
@@ -223,6 +249,22 @@ const handleDeleteTrip = () => {
           </Button>
         </View>
       )}
+
+  {!isOrganizer && (
+    <View style={styles.deleteContainer}>
+      <Button
+        mode="contained"
+        buttonColor="#EF4444"
+        textColor="#FFFFFF"
+        loading={leaveTripMutation.isPending}
+        onPress={handleLeaveTrip}
+      >
+        Leave Trip
+      </Button>
+    </View>
+  )}
+
+
 
       {/* Member Detail Sheet Modal */}
       <MemberDetailModal
@@ -249,7 +291,8 @@ function MemberDetailModal({
   const { data, isLoading } = useMemberDetails(tripId, member?.user_id);
 
   if (!visible || !member) return null;
-
+const contributions = data?.contributions ?? [];
+const splits = data?.splits ?? [];
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
       <View style={modalStyles.overlay}>
@@ -321,7 +364,7 @@ function MemberDetailModal({
               </View>
 
               {/* Contributions Breakdown */}
-              <Text style={modalStyles.sectionTitle}>Contributions ({data?.contributions?.length || 0})</Text>
+              <Text style={modalStyles.sectionTitle}>Contributions ({contributions?.length || 0})</Text>
               {data?.contributions?.length === 0 ? (
                 <Text style={modalStyles.emptyText}>No contributions recorded.</Text>
               ) : (
@@ -335,12 +378,12 @@ function MemberDetailModal({
 
               {/* Splits Breakdown */}
               <Text style={[modalStyles.sectionTitle, { marginTop: 15 }]}>
-                Expense Splits ({data?.splits?.length || 0})
+                Expense Splits ({splits?.length || 0})
               </Text>
-              {data?.splits?.length === 0 ? (
+              {splits.length === 0 ? (
                 <Text style={modalStyles.emptyText}>No expense splits assigned.</Text>
               ) : (
-                data?.splits.map((s: any) => (
+                splits.map((s: any) => (
                   <View key={s.id} style={modalStyles.listItem}>
                     <Text style={{ fontWeight: '600', color: '#1E293B' }}>{s.expense?.title || 'Expense'}</Text>
                     <Text style={{ fontWeight: 'bold', color: '#EA580C' }}>-{formatINR(s.amount)}</Text>

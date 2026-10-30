@@ -57,7 +57,7 @@ export function useMyTrips(userId?: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('trips')
-        .select('*, trip_members!inner(user_id)')
+        .select('*, trip_members!inner(user_id, role)')
         .eq('trip_members.user_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -102,7 +102,6 @@ export function useUserNetBalance(tripId: string, userId: string) {
     queryKey: ['user-net', tripId, userId],
     queryFn: async () => {
       const { data: contribs } = await supabase.from('contributions').select('amount_paise').eq('trip_id', tripId).eq('user_id', userId);
-      const { data: splits } = await supabase.from('expense_splits').select('amount_paise').eq('user_id', userId).蚝.from('expenses').select('id').eq('trip_id', tripId);
 
       // Filter splits that belong to this trip
       const { data: tripExps } = await supabase.from('expenses').select('id').eq('trip_id', tripId);
@@ -205,7 +204,11 @@ export function useRecordExpense() {
           user_id: m.user_id,
           amount_paise: splitAmt
         }));
-        await supabase.from('expense_splits').insert(splits);
+        const { error: splitError } = await supabase
+          .from('expense_splits')
+          .insert(splits);
+
+        if (splitError) throw splitError;
       }
     },
     onSuccess: (_, { tripId }) => {
@@ -322,6 +325,48 @@ export function useTripDetails(tripId: string) {
 
       if (error) throw error;
       return data;
+    },
+  });
+}
+
+export function useTripInviteCode(tripId: string) {
+  return useQuery({
+    queryKey: ['trip-invite', tripId],
+    enabled: !!tripId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invitations')
+        .select('code')
+        .eq('trip_id', tripId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data?.code ?? null;
+    },
+  });
+}
+
+export function useLeaveTrip() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (tripId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not signed in');
+
+      const { error } = await supabase
+        .from('trip_members')
+        .delete()
+        .eq('trip_id', tripId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    },
+    onSuccess: (_, tripId) => {
+      queryClient.invalidateQueries({ queryKey: ['my-trips'] });
+      queryClient.invalidateQueries({ queryKey: ['trip-members', tripId] });
     },
   });
 }
